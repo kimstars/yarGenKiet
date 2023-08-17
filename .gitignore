@@ -1,0 +1,3 @@
+/dbs
+*.db
+/__pycache__

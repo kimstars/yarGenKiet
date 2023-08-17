@@ -31,6 +31,9 @@ from hashlib import sha256
 import signal as signal_module
 from lxml import etree
 
+from findExePath import get_unique_exe_folders
+from tachfoldername import get_last_folder_nameA
+
 RELEVANT_EXTENSIONS = [".asp", ".vbs", ".ps", ".ps1", ".tmp", ".bas", ".bat", ".cmd", ".com", ".cpl",
                        ".crt", ".dll", ".exe", ".msc", ".scr", ".sys", ".vb", ".vbe", ".vbs", ".wsc",
                        ".wsf", ".wsh", ".input", ".war", ".jsp", ".php", ".asp", ".aspx", ".psd1", ".psm1", ".py"]
@@ -1041,11 +1044,19 @@ def generate_general_condition(file_info):
     return condition_string, pe_module_neccessary
 
 
-def generate_rules(file_strings, file_opcodes, super_rules, file_info, inverse_stats):
+def generate_rules(file_strings, file_opcodes, super_rules, file_info, inverse_stats, outputFile):
     # Write to file ---------------------------------------------------
-    if args.o:
+    fileOutput = "output"
+    current_time = datetime.datetime.now()
+    time_string = current_time.strftime('%Y%m%d_%H%M%S')
+    if (args.k):
+        fileOutput = os.path.join(fileOutput,f"{time_string}_{outputFile}.yara")
+    else:
+        fileOutput = os.path.join(fileOutput,args.o)
+        
+    if fileOutput:
         try:
-            fh = open(args.o, 'w')
+            fh = open(fileOutput, 'w')
         except Exception as e:
             traceback.print_exc()
 
@@ -1077,7 +1088,7 @@ def generate_rules(file_strings, file_opcodes, super_rules, file_info, inverse_s
             global_rule += "}\n\n"
 
             # Write rule
-            if args.o:
+            if fileOutput:
                 fh.write(global_rule)
 
     # General vars
@@ -1445,7 +1456,7 @@ def generate_rules(file_strings, file_opcodes, super_rules, file_info, inverse_s
             if pe_module_necessary:
                 fh.write('import "pe"\n\n')
         # RULES -----------------------------------------------------------
-        if args.o:
+        if fileOutput:
             fh.write(rules)
     except Exception as e:
         traceback.print_exc()
@@ -1533,14 +1544,14 @@ def generate_rules(file_strings, file_opcodes, super_rules, file_info, inverse_s
 
         try:
             # Try to write rule to file
-            if args.o:
+            if fileOutput:
                 fh.write(inverse_rules)
             inverse_rule_count += 1
         except Exception as e:
             traceback.print_exc()
 
     # Close the rules file --------------------------------------------
-    if args.o:
+    if fileOutput:
         try:
             fh.close()
         except Exception as e:
@@ -1911,6 +1922,9 @@ def update_databases():
         sys.exit(1)
 
 
+
+
+
 def processSampleDir(targetDir):
     """
     Processes samples in a given directory and creates a yara rule file
@@ -1932,9 +1946,11 @@ def processSampleDir(targetDir):
     (file_strings, file_opcodes, combinations, super_rules, inverse_stats) = \
         sample_string_evaluation(sample_string_stats, sample_opcode_stats, file_info)
 
+    fileRuleName = get_last_folder_nameA(targetDir)
+    
     # Create Rule Files
     (rule_count, inverse_rule_count, super_rule_count) = \
-        generate_rules(file_strings, file_opcodes, super_rules, file_info, inverse_stats)
+        generate_rules(file_strings, file_opcodes, super_rules, file_info, inverse_stats, fileRuleName)
 
     if args.inverse:
         print("[=] Generated %s INVERSE rules." % str(inverse_rule_count))
@@ -2065,6 +2081,7 @@ if __name__ == '__main__':
 
     group_output = parser.add_argument_group('Rule Output')
     group_output.add_argument('-o', help='Output rule file', metavar='output_rule_file', default='yargen_rules.yar')
+    group_output.add_argument('-k', help='(Kiet style scan) Find folder and scan folder has exe file',default=1)
     group_output.add_argument('-e', help='Output directory for string exports', metavar='output_dir_strings', default='')
     group_output.add_argument('-a', help='Author Name', metavar='author', default='yarGen Rule Generator')
     group_output.add_argument('-r', help='Reference (can be string or text file)', metavar='ref',
@@ -2424,6 +2441,16 @@ if __name__ == '__main__':
         else:
             # Scan malware files
             print("[+] Processing malware files ...")
-            processSampleDir(args.m)
+            
+            if(args.k): # Kiet : scan recursion in folder malware path 
+                listFolderSample = get_unique_exe_folders(args.m)
+                print(f"[~] KietCute => Found {len(listFolderSample)} folders have exe or dll file : ")
+                for folderPath in listFolderSample:
+                    print(f"[x] Scan => {folderPath}")
+                    processSampleDir(folderPath)
+            else:
+                processSampleDir(args.m)
 
         print("[+] yarGen run finished")
+
+
